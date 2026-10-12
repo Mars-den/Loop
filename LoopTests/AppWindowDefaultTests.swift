@@ -203,7 +203,7 @@ struct AppWindowDefaultTests {
         record.appendExactFrame(restored, action: .init(.custom))
         #expect(record.lastExactFrame == manuallyMoved)
         // Editing a preferred frame later cannot change history snapshots.
-        record.actions.removeFirst()
+        record.removeCurrentAction()
         #expect(record.actions.count == 2)
         #expect(record.lastExactFrame == nil)
         #expect(record.initialFrame == initial)

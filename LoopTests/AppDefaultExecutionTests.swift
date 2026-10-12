@@ -128,7 +128,7 @@ struct AppDefaultExecutionTests {
         let before = CGRect(x: 0, y: 24, width: 960, height: 1056)
         let after = CGRect(x: 300, y: 150, width: 900, height: 700)
         var record = WindowRecords.Record(initialFrame: initial)
-        record.actions.insert(.init(.leftHalf), at: 0)
+        record.appendAction(.init(.leftHalf))
         let context = ResizeContext(bounds: right, padding: .zero, action: .init(.useAppDefault))
         context.resolvedRecord = .init(record: record)
         let represented = WindowFrameResolver.currentRecordedFrame(context: context, bounds: right, padding: .zero)
@@ -166,7 +166,7 @@ struct AppDefaultExecutionTests {
         #expect(record.actions.count == 3)
         #expect(record.lastExactFrame == manual)
         record.removeCurrentAction()
-        #expect(record.actions.first.flatMap { record.exactFrames[$0.id] } == manual)
+        #expect(record.currentExactFrame == manual)
         record.removeCurrentAction()
         #expect(record.actions.count == 1)
     }
@@ -174,17 +174,71 @@ struct AppDefaultExecutionTests {
     @Test func recurringBindingIDsDoNotAliasExactSnapshots() {
         let binding = WindowAction(.leftHalf)
         var record = WindowRecords.Record(initialFrame: left)
-        record.actions.insert(binding, at: 0)
-        record.actions.insert(binding, at: 0)
+        record.appendAction(binding)
+        record.appendAction(binding)
         record.commitAppDefaultTransition(
             before: right, after: left, representedFrame: right,
             beforeAction: .init(.custom), afterAction: .init(.custom)
         )
         #expect(record.lastExactFrame == right)
-        #expect(record.exactFrames[binding.id] == nil)
+        #expect(record.actions[1].id == binding.id)
         record.removeCurrentAction()
         record.removeCurrentAction()
         #expect(record.actions.first?.id == binding.id)
+    }
+
+    @Test func reusingShortcutDoesNotDeleteAnOlderExactUndoSnapshot() {
+        let binding = WindowAction(.leftHalf)
+        let before = CGRect(x: -1500, y: 70, width: 780, height: 850)
+        let after = CGRect(x: 300, y: 150, width: 900, height: 700)
+        var record = WindowRecords.Record(initialFrame: left)
+        record.appendAction(binding)
+        record.commitAppDefaultTransition(
+            before: before, after: after, representedFrame: before,
+            beforeAction: .init(.custom), afterAction: .init(.custom)
+        )
+        record.appendAction(binding)
+        record.removeCurrentAction()
+        #expect(record.lastExactFrame == before)
+        #expect(record.exactFrames.count == 2)
+        record.removeCurrentAction()
+        #expect(record.currentExactFrame == before)
+        #expect(record.actions.first?.id == binding.id)
+        #expect(record.exactFrames.count == 1)
+    }
+
+    @Test func consecutiveUndoRestoresPaddingAfterAnExactSnapshot() throws {
+        let screen = try #require(NSScreen.screens.first)
+        let bounds = screen.cgSafeScreenFrame
+        let leftAction = WindowAction(.leftHalf)
+        let rightAction = WindowAction(.rightHalf)
+        let rightContext = ResizeContext(screen: screen, bounds: bounds, padding: padding, action: rightAction)
+        let before = rightContext.getTargetFrame().padded
+        let after = CGRect(x: bounds.minX + 100, y: bounds.minY + 100, width: 700, height: 500)
+        var record = WindowRecords.Record(initialFrame: bounds)
+        record.appendAction(leftAction)
+        record.appendAction(rightAction)
+        record.commitAppDefaultTransition(
+            before: before, after: after, representedFrame: before,
+            beforeAction: .init(.custom), afterAction: .init(.custom)
+        )
+        let context = ResizeContext(screen: screen, bounds: bounds, padding: padding, action: .init(.undo))
+        context.resolvedRecord = .init(record: record)
+        context.resolveExactUndoScreen()
+        #expect(context.padding == .zero)
+        #expect(context.getTargetFrame().padded == before)
+        // Execution resolves again after preview. Do not replace saved padding with zero.
+        context.resolveExactUndoScreen()
+        record.removeCurrentAction()
+        context.resolvedRecord = .init(record: record)
+        #expect(context.resolvedRecord?.lastExactFrame == nil)
+        context.setAction(to: .init(.undo), parent: nil)
+        context.resolveExactUndoScreen()
+        #expect(context.padding == padding)
+        #expect(context.paddedBounds == padding.applyToBounds(bounds, screen: screen))
+        let expected = ResizeContext(screen: screen, bounds: bounds, padding: padding, action: leftAction)
+        let actual = context.derivedContext(action: leftAction, bounds: bounds, padding: context.padding)
+        #expect(actual.getTargetFrame().padded == expected.getTargetFrame().padded)
     }
 
     @Test func completedDefaultUpdatesLiveStateWithoutOverwritingANewerSelection() {

@@ -16,24 +16,35 @@ actor WindowRecords {
 
     struct Record {
         let initialFrame: CGRect
-        var actions: [WindowAction]
+        private(set) var actions: [WindowAction]
         var exactFrames: [UUID: CGRect] = [:]
+        /// History entries have their own identities; shortcut IDs may recur.
+        private var historyEntryIDs = [UUID()]
 
         init(initialFrame: CGRect) {
             self.initialFrame = initialFrame
             self.actions = [.init(.initialFrame)]
         }
 
+        mutating func appendAction(_ action: WindowAction) {
+            actions.insert(action, at: 0)
+            historyEntryIDs.insert(UUID(), at: 0)
+        }
+
         /// Keep a concrete action as well as the absolute frame. Screen-switching
         /// can still reuse the action, while Undo restores exact global geometry.
         mutating func appendExactFrame(_ frame: CGRect, action: WindowAction) {
-            exactFrames[action.id] = frame
-            actions.insert(action, at: 0)
+            appendAction(action)
+            exactFrames[historyEntryIDs[0]] = frame
         }
 
         var lastExactFrame: CGRect? {
             guard actions.count >= 2 else { return nil }
-            return exactFrames[actions[1].id]
+            return exactFrames[historyEntryIDs[1]]
+        }
+
+        var currentExactFrame: CGRect? {
+            exactFrames[historyEntryIDs[0]]
         }
 
         /// A completed default is one transition. Preserve manual changes only
@@ -45,16 +56,9 @@ actor WindowRecords {
             guard !Task.isCancelled, before.isFinite, after.isFinite,
                   before.width > 0, before.height > 0, after.width > 0, after.height > 0,
                   !before.approximatelyEqual(to: after, tolerance: 1) else { return }
-            let currentFrame = actions.first.flatMap { exactFrames[$0.id] } ?? representedFrame
-            if currentFrame?.approximatelyEqual(to: before, tolerance: 1) == true, let current = actions.first {
-                if actions.dropFirst().contains(where: { $0.id == current.id }) {
-                    // Bindings can recur with the same ID. Giving this snapshot
-                    // its own identity must not overwrite an older occurrence.
-                    actions[0] = beforeAction
-                    exactFrames[beforeAction.id] = before
-                } else {
-                    exactFrames[current.id] = before
-                }
+            let currentFrame = currentExactFrame ?? representedFrame
+            if currentFrame?.approximatelyEqual(to: before, tolerance: 1) == true {
+                exactFrames[historyEntryIDs[0]] = before
             } else {
                 appendExactFrame(before, action: beforeAction)
             }
@@ -63,8 +67,8 @@ actor WindowRecords {
 
         mutating func removeCurrentAction() {
             guard actions.count > 1 else { return }
-            let removed = actions.removeFirst()
-            exactFrames[removed.id] = nil
+            actions.removeFirst()
+            exactFrames[historyEntryIDs.removeFirst()] = nil
         }
     }
 
@@ -89,7 +93,7 @@ actor WindowRecords {
             self.lastAction = record.flatMap { $0.actions.count >= 2 ? $0.actions[1] : nil }
             self.currentAction = record?.actions.first
             self.lastExactFrame = record?.lastExactFrame
-            self.currentExactFrame = record.flatMap { record in record.actions.first.flatMap { record.exactFrames[$0.id] } }
+            self.currentExactFrame = record?.currentExactFrame
         }
     }
 
@@ -98,8 +102,7 @@ actor WindowRecords {
     }
 
     private func getCurrentExactFrame(for window: Window) -> CGRect? {
-        guard let record = recordsByWindowID[window.cgWindowID], let current = record.actions.first else { return nil }
-        return record.exactFrames[current.id]
+        recordsByWindowID[window.cgWindowID]?.currentExactFrame
     }
 
     /// Erase all previous records for a window
@@ -176,9 +179,9 @@ actor WindowRecords {
                 sizeMode: .custom
             )
 
-            recordsByWindowID[window.cgWindowID]?.actions.insert(action, at: 0)
+            recordsByWindowID[window.cgWindowID]?.appendAction(action)
         } else {
-            recordsByWindowID[window.cgWindowID]?.actions.insert(action, at: 0)
+            recordsByWindowID[window.cgWindowID]?.appendAction(action)
         }
 
         log.info("Recorded: \(action) for: \(window)")

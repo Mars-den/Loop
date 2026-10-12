@@ -51,6 +51,7 @@ final class ResizeContext {
     /// A saved app frame bypasses padding: it already describes the actual window.
     var appDefaultFrame: CGRect?
     var exactUndoFrame: CGRect?
+    private var paddingBeforeExactUndo: PaddingConfiguration?
     private var appDefaultTransferActionID: UUID?
     private var appDefaultHasNoTargetFrame = false
 
@@ -175,9 +176,10 @@ final class ResizeContext {
             newParentAction: newParentAction
         )
 
-        if action.direction == .undo, newAction.direction != .undo {
-            padding = PaddingConfiguration.getConfiguredPadding(for: screen)
+        if action.direction == .undo {
+            padding = paddingBeforeExactUndo ?? PaddingConfiguration.getConfiguredPadding(for: screen)
             paddedBounds = padding.applyToBounds(bounds, screen: screen)
+            paddingBeforeExactUndo = nil
         }
         if let transferID = appDefaultTransferActionID, newAction.id != transferID || newAction.direction != .custom {
             appDefaultTransferActionID = nil
@@ -273,7 +275,11 @@ final class ResizeContext {
             frame: frame, bounds: screens.map(\.cgSafeScreenFrame),
             fallbackIndex: screens.firstIndex(where: { $0 == screen }) ?? 0
         ) else { return }
-        setScreen(to: screens[target.index], padding: .zero)
+        let targetScreen = screens[target.index]
+        if paddingBeforeExactUndo == nil || screen != targetScreen {
+            paddingBeforeExactUndo = screen == targetScreen ? padding : PaddingConfiguration.getConfiguredPadding(for: targetScreen)
+        }
+        setScreen(to: targetScreen, padding: .zero)
         exactUndoFrame = target.frame
     }
 
