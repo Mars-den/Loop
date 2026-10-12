@@ -162,7 +162,7 @@ final class AppWindowDefaultManager {
               let window = try? Window(element: element, pid: pid),
               !window.isAppExcluded, !window.isOwnWindow,
               window.subrole == .standardWindow, !window.fullscreen, !window.minimized,
-              let target = Self.target(for: window, resolveProperties: false) else { return }
+              let target = Self.target(for: window, resolveProperties: false, useActionScreen: false) else { return }
         let frame = window.frame
         guard frame.isFinite, frame.width > 0, frame.height > 0,
               !frame.approximatelyEqual(to: target.frame) else { return }
@@ -216,14 +216,16 @@ final class AppWindowDefaultManager {
 
     /// Resolves display-local custom coordinates against the currently available
     /// displays. Geometry is recomputed on every invocation, not cached globally.
-    nonisolated static func target(for window: Window, resolveProperties: Bool = true) -> (frame: CGRect, screen: NSScreen)? {
+    nonisolated static func target(for window: Window, resolveProperties: Bool = true, useActionScreen: Bool = true) -> (frame: CGRect, screen: NSScreen)? {
         guard let id = window.nsRunningApplication?.bundleIdentifier,
               let saved = Defaults[.appWindowDefaults][id] else { return nil }
         let screens = NSScreen.screens
         let current = ScreenUtility.screenContaining(window)
+        let actionScreen = useActionScreen ? (Defaults[.useScreenWithCursor] ? NSScreen.screenWithMouse : NSScreen.main) : nil
         guard let index = AppWindowDefault.targetDisplayIndex(
             savedUUID: saved.displayUUID, availableUUIDs: screens.map(\.appDefaultDisplayUUID),
-            currentIndex: screens.firstIndex(where: { $0 == current }) ?? 0
+            currentIndex: screens.firstIndex(where: { $0 == current }) ?? 0,
+            actionScreenIndex: actionScreen.flatMap { screens.firstIndex(of: $0) }
         ) else { return nil }
         let screen = screens[index]
         let context = ResizeContext(window: window, screen: screen, padding: .zero, action: saved.action)

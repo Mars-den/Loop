@@ -38,6 +38,30 @@ struct AppWindowDefaultTests {
         #expect(AppWindowDefault.targetDisplayIndex(savedUUID: "missing", availableUUIDs: [], currentIndex: 0) == nil)
     }
 
+    @Test func manualCurrentDisplayUsesNormalActionScreen() {
+        #expect(AppWindowDefault.targetDisplayIndex(
+            savedUUID: nil, availableUUIDs: ["window", "cursor"], currentIndex: 0, actionScreenIndex: 1
+        ) == 1)
+        #expect(AppWindowDefault.targetDisplayIndex(
+            savedUUID: nil, availableUUIDs: ["main", "window"], currentIndex: 1, actionScreenIndex: 0
+        ) == 0)
+    }
+
+    @Test func automaticCurrentDisplayStaysOnWindowScreen() {
+        #expect(AppWindowDefault.targetDisplayIndex(
+            savedUUID: nil, availableUUIDs: ["cursor", "window"], currentIndex: 1
+        ) == 1)
+    }
+
+    @Test func namedDisplayAndDisconnectedFallbackIgnoreActionScreen() {
+        #expect(AppWindowDefault.targetDisplayIndex(
+            savedUUID: "saved", availableUUIDs: ["saved", "cursor"], currentIndex: 0, actionScreenIndex: 1
+        ) == 0)
+        #expect(AppWindowDefault.targetDisplayIndex(
+            savedUUID: "missing", availableUUIDs: ["window", "cursor"], currentIndex: 0, actionScreenIndex: 1
+        ) == 0)
+    }
+
     @Test func offscreenFrameIsClampedOnNegativeOriginDisplay() {
         let frame = CGRect(x: 9000, y: -4000, width: 800, height: 600)
         #expect(AppWindowDefault.reachableFrame(frame, in: bounds) == CGRect(x: -800, y: 24, width: 800, height: 600))

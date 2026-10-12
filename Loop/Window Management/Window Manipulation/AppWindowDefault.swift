@@ -47,11 +47,14 @@ struct AppWindowDefault: Codable, Defaults.Serializable, Equatable {
         return result
     }
 
-    /// Prefer the saved physical display, but fall back to the window's display
-    /// (not the cursor's display) when that monitor is disconnected.
-    static func targetDisplayIndex(savedUUID: String?, availableUUIDs: [String?], currentIndex: Int) -> Int? {
+    /// Manual Current display presets follow the normal action's screen selection.
+    /// A disconnected named display still falls back to the window's display.
+    static func targetDisplayIndex(savedUUID: String?, availableUUIDs: [String?], currentIndex: Int, actionScreenIndex: Int? = nil) -> Int? {
         guard !availableUUIDs.isEmpty else { return nil }
         if let savedUUID, let index = availableUUIDs.firstIndex(of: savedUUID) { return index }
+        if savedUUID == nil, let actionScreenIndex, availableUUIDs.indices.contains(actionScreenIndex) {
+            return actionScreenIndex
+        }
         return availableUUIDs.indices.contains(currentIndex) ? currentIndex : 0
     }
 
