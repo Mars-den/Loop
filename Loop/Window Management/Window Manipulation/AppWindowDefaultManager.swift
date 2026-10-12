@@ -208,7 +208,9 @@ final class AppWindowDefaultManager {
                 let enhancedUI: Bool = (try? appElement.getValue(.enhancedUserInterface)) ?? false
                 if enhancedUI { try? appElement.setValue(.enhancedUserInterface, value: false) }
                 window.setSize(target.frame.size)
-                if let corrected = AppWindowDefault.reachableFrame(window.frame, in: target.screen.cgSafeScreenFrame, fitSize: false) {
+                if let corrected = AppWindowDefault.automaticResizeCompletionFrame(
+                    targetFrame: target.frame, actualSize: window.size, bounds: target.screen.cgSafeScreenFrame
+                ) {
                     window.setPosition(corrected.origin)
                 }
                 if enhancedUI { try? appElement.setValue(.enhancedUserInterface, value: true) }

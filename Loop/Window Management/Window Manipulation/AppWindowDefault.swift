@@ -65,6 +65,12 @@ struct AppWindowDefault: Codable, Defaults.Serializable, Equatable {
             (abs(currentFrame.width - targetSize.width) > 1 || abs(currentFrame.height - targetSize.height) > 1)
     }
 
+    /// An early clamp may shift a large window inward; restore the preset origin
+    /// after resizing, accounting for the application's actual minimum size.
+    static func automaticResizeCompletionFrame(targetFrame: CGRect, actualSize: CGSize, bounds: CGRect) -> CGRect? {
+        reachableFrame(CGRect(origin: targetFrame.origin, size: actualSize), in: bounds, fitSize: false)
+    }
+
     /// Only frame-producing actions are fallback choices. In particular, rejecting
     /// App Default itself prevents recursive resolution of malformed settings.
     static var fallbackDirections: [WindowDirection] {

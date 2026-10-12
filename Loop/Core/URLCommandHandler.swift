@@ -635,11 +635,17 @@ final class URLCommandHandler {
 
     // MARK: - Helper Methods
 
+    static func focusedAppDefaultScreen(useScreenWithCursor: Bool, cursorScreen: NSScreen?, mainScreen: NSScreen?) -> NSScreen? {
+        useScreenWithCursor ? cursorScreen : mainScreen
+    }
+
     /// Returns true when handled, including when no screen is available. No normal
     /// target lookup or activation may precede focused-app resolution in the engine.
     private func executeFocusedAppDefault(_ action: WindowAction) -> Bool {
         guard Self.usesFocusedApplication(for: action) else { return false }
-        guard let screen = NSScreen.main else {
+        guard let screen = Self.focusedAppDefaultScreen(
+            useScreenWithCursor: Defaults[.useScreenWithCursor], cursorScreen: NSScreen.screenWithMouse, mainScreen: NSScreen.main
+        ) else {
             writeToOutput("[URLHandler] No screen found")
             return true
         }

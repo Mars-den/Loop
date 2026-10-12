@@ -3,10 +3,19 @@
 //  LoopTests
 //
 
+import AppKit
 @testable import Loop
 import Testing
 
 struct AppDefaultURLCommandTests {
+    @Test func focusedAppDefaultScreenRespectsCursorPreference() throws {
+        let screen = try #require(NSScreen.screens.first)
+        #expect(URLCommandHandler.focusedAppDefaultScreen(useScreenWithCursor: true, cursorScreen: screen, mainScreen: nil) == screen)
+        #expect(URLCommandHandler.focusedAppDefaultScreen(useScreenWithCursor: false, cursorScreen: nil, mainScreen: screen) == screen)
+        #expect(URLCommandHandler.focusedAppDefaultScreen(useScreenWithCursor: true, cursorScreen: nil, mainScreen: screen) == nil)
+        #expect(URLCommandHandler.focusedAppDefaultScreen(useScreenWithCursor: false, cursorScreen: screen, mainScreen: nil) == nil)
+    }
+
     @Test func directAppDefaultCommandsUseFocusedApplication() throws {
         for name in ["UseAppDefault", "useappdefault", "USEAPPDEFAULT"] {
             let direction = try #require(URLCommandHandler.commandDirection(named: name))

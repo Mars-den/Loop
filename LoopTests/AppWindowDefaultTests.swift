@@ -62,6 +62,19 @@ struct AppWindowDefaultTests {
         #expect(!AppWindowDefault.shouldRetryAutomaticResize(observedFrame: observed, currentFrame: .zero, targetSize: targetSize))
     }
 
+    @Test func delayedResizeRestoresBottomRightPresetAfterInitialClamping() throws {
+        let bounds = CGRect(x: -1600, y: 24, width: 1600, height: 1000)
+        let target = CGRect(x: -400, y: 724, width: 400, height: 300)
+        let initial = CGRect(origin: target.origin, size: CGSize(width: 900, height: 700))
+        let clamped = try #require(AppWindowDefault.reachableFrame(initial, in: bounds, fitSize: false))
+        #expect(clamped.origin != target.origin)
+        #expect(AppWindowDefault.automaticResizeCompletionFrame(targetFrame: target, actualSize: target.size, bounds: bounds) == target)
+        let constrained = try #require(AppWindowDefault.automaticResizeCompletionFrame(
+            targetFrame: target, actualSize: CGSize(width: 500, height: 400), bounds: bounds
+        ))
+        #expect(constrained == CGRect(x: -500, y: 624, width: 500, height: 400))
+    }
+
     @Test func namedDisplayAndDisconnectedFallbackIgnoreActionScreen() {
         #expect(AppWindowDefault.targetDisplayIndex(
             savedUUID: "saved", availableUUIDs: ["saved", "cursor"], currentIndex: 0, actionScreenIndex: 1
