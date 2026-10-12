@@ -68,6 +68,9 @@ struct ScreenView<Content>: View where Content: View {
         }
         .aspectRatio(16 / 10, contentMode: .fill)
         .task {
+            // Off-screen UI regression tests must not capture the user's desktop
+            // or request Screen Recording permission just to render an editor.
+            guard ProcessInfo.processInfo.environment["LOOP_RUNNING_TESTS"] != "1" else { return }
             guard let fetchedImage = await fetchImage() else {
                 return
             }

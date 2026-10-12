@@ -16,6 +16,7 @@ enum WindowEngine {
     /// Performs the actual resize operation on a window.
     /// This is an internal method - callers should use `WindowActionEngine.apply()` instead.
     static func performResize(context: ResizeContext) async throws {
+        if context.action.direction == .useAppDefault { try Task.checkCancellation() }
         // Immediately return for no-op or focus-only actions
         guard let window = context.window,
               !context.action.direction.isNoOp,
@@ -32,7 +33,15 @@ enum WindowEngine {
             await context.refreshResolvedState()
         }
 
-        let willChangeScreens = ScreenUtility.screenContaining(window) != context.screen
+        if context.action.direction == .useAppDefault { try Task.checkCancellation() }
+        let sourceScreen = ScreenUtility.screenContaining(window)
+        let sourceBounds = sourceScreen?.cgSafeScreenFrame ?? context.bounds
+        let sourcePadding = PaddingConfiguration.getConfiguredPadding(for: sourceScreen)
+        let representedBeforeFrame = context.action.direction == .useAppDefault
+            ? WindowFrameResolver.currentRecordedFrame(context: context, bounds: sourceBounds, padding: sourcePadding) : nil
+        context.resolveExactUndoScreen()
+
+        let willChangeScreens = sourceScreen != context.screen
         let targetFrame = context.getTargetFrame().padded
         log.info("Resizing \(window) to \(targetFrame)")
 
@@ -63,16 +72,19 @@ enum WindowEngine {
         if Defaults[.focusWindowOnResize] || useSystemWM {
             await window.focus()
         }
-        
+        if context.action.direction == .useAppDefault { try Task.checkCancellation() }
+
         // Without the preview, windows resize live with the cursor, so moving it would fight the user
         if Defaults[.moveCursorWithWindow], Defaults[.previewVisibility] {
             CGWarpMouseCursorPosition(targetFrame.center)
         }
 
-        let finalFrame: CGRect
+        var finalFrame: CGRect
 
         // Attempt system window manager if possible
-        if !willChangeScreens, useSystemWM,
+        let restoresExactFrame = context.action.direction == .undo &&
+            (context.exactUndoFrame ?? context.resolvedRecord?.lastExactFrame) != nil
+        if !willChangeScreens, useSystemWM, !restoresExactFrame,
            #available(macOS 15, *),
            await resizeWithSystemWindowManager(window: window, to: context.action) {
             finalFrame = window.frame
@@ -94,12 +106,18 @@ enum WindowEngine {
                     bounds: context.paddedBounds,
                     willChangeScreens: willChangeScreens,
                     animate: shouldAnimate,
-                    resolvedProperties: context.resolvedWindowProperties
+                    resolvedProperties: context.resolvedWindowProperties,
+                    isAppDefault: context.action.direction == .useAppDefault
                 )
             } catch {
+                if context.action.direction == .useAppDefault, error is CancellationError { throw error }
                 log.error(error.localizedDescription)
                 finalFrame = window.frame
             }
+        }
+
+        if context.action.direction == .useAppDefault {
+            finalFrame = try correctAppDefaultFrame(finalFrame, bounds: context.bounds, setPosition: window.setPosition)
         }
 
         let postResizeProperties = context.resolvedWindowProperties.map {
@@ -107,14 +125,23 @@ enum WindowEngine {
         }
 
         // Record post-resize actions (replaces former defer block)
+        if context.action.direction == .useAppDefault { try Task.checkCancellation() }
         if context.action.direction == .undo {
             await WindowRecords.shared.removeLastAction(for: window)
         } else if storeAsFrame {
-            await WindowRecords.shared.record(
-                window,
-                resolvedProperties: postResizeProperties,
-                context.action
-            )
+            if context.action.direction == .useAppDefault, let before = context.resolvedWindowProperties?.frame {
+                await WindowRecords.shared.recordAppDefaultTransition(
+                    for: window, before: before, after: finalFrame, representedFrame: representedBeforeFrame,
+                    beforeBounds: sourcePadding.applyToBounds(sourceBounds, screen: sourceScreen),
+                    afterBounds: context.paddedBounds
+                )
+            } else {
+                await WindowRecords.shared.record(
+                    window,
+                    resolvedProperties: postResizeProperties,
+                    context.action
+                )
+            }
         }
 
         // Update the snapshot
@@ -131,6 +158,17 @@ enum WindowEngine {
                 screen: screen
             )
         }
+    }
+
+    /// Check before the synchronous corrective write, including when a resize
+    /// completed concurrently with cancellation of its execution task.
+    static func correctAppDefaultFrame(_ frame: CGRect, bounds: CGRect, setPosition: (CGPoint) -> ()) throws -> CGRect {
+        try Task.checkCancellation()
+        guard let corrected = AppWindowDefault.reachableFrame(frame, in: bounds, fitSize: false) else { return frame }
+        if !frame.origin.approximatelyEqual(to: corrected.origin, tolerance: 1) {
+            setPosition(corrected.origin)
+        }
+        return corrected
     }
 
     // MARK: - System Window Manager
@@ -185,12 +223,14 @@ enum WindowEngine {
         bounds: CGRect,
         willChangeScreens: Bool,
         animate: Bool,
-        resolvedProperties: Window.ResolvedProperties? = nil
+        resolvedProperties: Window.ResolvedProperties? = nil,
+        isAppDefault: Bool = false
     ) async throws -> CGRect {
         let actualFrame: CGRect
 
         if animate {
             try await window.setFrameAnimated(targetFrame, bounds: bounds, resolvedProperties: resolvedProperties)
+            if isAppDefault { try Task.checkCancellation() }
             actualFrame = window.frame
         } else {
             await window.setFrame(targetFrame, sizeFirst: willChangeScreens, resolvedProperties: resolvedProperties)
@@ -205,6 +245,7 @@ enum WindowEngine {
             actualFrame = frameAfterResize
         }
 
+        if isAppDefault { try Task.checkCancellation() }
         return handleSizeConstrainedWindow(
             window: window,
             actualFrame: actualFrame,

@@ -157,7 +157,7 @@ open "loop://list/keybinds"      # List custom keybinds
   <tbody>
     <tr>
       <td><strong>General</strong></td>
-      <td>Fullscreen, Maximize, Almost Maximize, Centre, MacOS Centre, Minimize, Hide</td>
+      <td>Fullscreen, Maximize, Almost Maximize, Centre, MacOS Centre, Minimize, Hide, App Default</td>
     </tr>
     <tr>
       <td><strong>Halves</strong></td>
@@ -189,6 +189,18 @@ open "loop://list/keybinds"      # List custom keybinds
     </tr>
   </tbody>
 </table>
+
+### App Defaults
+
+Save a preferred window size, position, and display for each app:
+
+1. Open Loop Settings → Behavior → Window → App Defaults → Configure….
+2. Click **Add** and choose an installed app. Edit its custom size, position, and preferred display; use the sliders button beside the app to edit it again.
+3. In **Keybinds**, assign the **App Default** action to a shortcut. It targets the focused app's window, independently of the normal **Target window** setting. Configure that binding's **When no default is saved** fallback to choose what happens for apps without a saved default.
+
+Optionally enable **Apply to new windows automatically** to apply saved defaults to newly created standard windows. Enabling this option does not rearrange existing windows.
+
+Saved geometry stays local to this Mac. If the preferred display is disconnected, Loop uses the window's current display instead.
 
 ## FAQ
 

@@ -26,6 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_: Notification) {
+        // Hosted unit tests must not terminate a user's Loop, install taps, or request permissions.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil,
+              ProcessInfo.processInfo.environment["LOOP_RUNNING_TESTS"] != "1" else { return }
         configureLogging()
         DefaultsiCloudSyncRegistrar.register()
 
@@ -35,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let dataPatcherTask = Task { @MainActor in
             await Defaults.iCloud.waitForSyncCompletion()
             DataPatcher.run()
+            AppWindowDefaultManager.migratePreferences()
         }
 
         // Show settings window only if not launched as login item AND startHidden is disabled
@@ -68,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             LoopManager.shared.start()
             WindowDragManager.shared.addObservers()
             StashManager.shared.start()
+            AppWindowDefaultManager.shared.start()
             AccessibilityManager.requestAccess()
 
             // Wait for the app to settle before showing the update window
@@ -179,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LoopManager.shared.shutdown()
         WindowDragManager.shared.shutdown()
         StashManager.shared.shutdown()
+        AppWindowDefaultManager.shared.shutdown()
         return .terminateNow
     }
 

@@ -22,6 +22,9 @@ enum WindowDirection: String, CaseIterable, Identifiable, Codable {
     case maximizeHeight = "MaximizeHeight", maximizeWidth = "MaximizeWidth", fillAvailableSpace = "FillAvailableSpace"
     case undo = "Undo", initialFrame = "InitialFrame", hide = "Hide", minimize = "Minimize", minimizeOthers = "MinimizeOthers"
     case macOSCenter = "MacOSCenter", center = "Center"
+    case useAppDefault = "UseAppDefault"
+    /// Decode-only compatibility with the first local build. Hidden and inert.
+    case saveAppDefault = "SaveAppDefault"
 
     // Halves
     case topHalf = "TopHalf", rightHalf = "RightHalf", bottomHalf = "BottomHalf", leftHalf = "LeftHalf"
@@ -79,7 +82,7 @@ enum WindowDirection: String, CaseIterable, Identifiable, Codable {
     case custom = "Custom", cycle = "Cycle"
 
     // These are used in the menubar resize submenu & keybind configuration
-    static var general: [WindowDirection] { [.fullscreen, .maximize, .almostMaximize, .maximizeHeight, .maximizeWidth, .fillAvailableSpace, .center, .macOSCenter, .minimize, .minimizeOthers, .hide] }
+    static var general: [WindowDirection] { [.fullscreen, .maximize, .almostMaximize, .maximizeHeight, .maximizeWidth, .fillAvailableSpace, .center, .macOSCenter, .minimize, .minimizeOthers, .hide, .useAppDefault] }
     static var halves: [WindowDirection] { [.topHalf, .verticalCenterHalf, .bottomHalf, .leftHalf, .horizontalCenterHalf, .rightHalf] }
     static var quarters: [WindowDirection] { [.topLeftQuarter, .topRightQuarter, .bottomLeftQuarter, .bottomRightQuarter] }
     static var horizontalThirds: [WindowDirection] { [.rightThird, .rightTwoThirds, .horizontalCenterThird, .leftTwoThirds, .leftThird] }
@@ -107,7 +110,7 @@ enum WindowDirection: String, CaseIterable, Identifiable, Codable {
     static var more: [WindowDirection] { [.initialFrame, .undo, .custom, .cycle] }
 
     // Computed properties for checking conditions
-    var isNoOp: Bool { [.noSelection, .noAction].contains(self) }
+    var isNoOp: Bool { [.noSelection, .noAction, .saveAppDefault].contains(self) }
     var willChangeScreen: Bool { WindowDirection.screenSwitching.contains(self) }
     var willChangeSpace: Bool { WindowDirection.spaceSwitching.contains(self) }
     var willAdjustSize: Bool { WindowDirection.sizeAdjustment.contains(self) }
@@ -155,12 +158,12 @@ enum WindowDirection: String, CaseIterable, Identifiable, Codable {
     /// none of which produce a frame. Shared by `WindowFrameResolver.getFrame` and
     /// `ResizeContext.recomputeTargetFrame` so the two "no-frame" lists can't drift apart.
     var hasTargetFrame: Bool {
-        let noFrameActions: [WindowDirection] = [.noAction, .noSelection, .cycle, .minimize, .minimizeOthers, .hide]
+        let noFrameActions: [WindowDirection] = [.noAction, .noSelection, .cycle, .minimize, .minimizeOthers, .hide, .saveAppDefault]
         return !(noFrameActions.contains(self) || willFocusWindow || willChangeSpace || willChangeScreen)
     }
 
     var hasRadialMenuAngle: Bool {
-        let noAngleActions: [WindowDirection] = [.noAction, .noSelection, .minimize, .minimizeOthers, .hide, .initialFrame, .undo, .cycle]
+        let noAngleActions: [WindowDirection] = [.noAction, .noSelection, .minimize, .minimizeOthers, .hide, .initialFrame, .undo, .cycle, .saveAppDefault, .useAppDefault]
         return !(noAngleActions.contains(self) || shouldFillRadialMenu || willChangeScreen || willChangeSpace || willAdjustSize || willShrink || willGrow || willMove || willFocusWindow)
     }
 

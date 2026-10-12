@@ -48,6 +48,12 @@ final class ResizeContext {
     private var cycleActionCoordinator = CycleActionCoordinator()
     var lastAppliedFrame: CGRect?
 
+    /// A saved app frame bypasses padding: it already describes the actual window.
+    var appDefaultFrame: CGRect?
+    var exactUndoFrame: CGRect?
+    private var appDefaultTransferActionID: UUID?
+    private var appDefaultHasNoTargetFrame = false
+
     init(
         window: Window? = nil,
         initialFrame: CGRect? = nil,
@@ -74,10 +80,10 @@ final class ResizeContext {
         self.needsRecompute = !action.direction.isNoOp
     }
 
-    func setScreen(to screen: NSScreen?) {
+    func setScreen(to screen: NSScreen?, padding override: PaddingConfiguration? = nil) {
         self.screen = screen
         bounds = screen?.cgSafeScreenFrame ?? .zero
-        padding = PaddingConfiguration.getConfiguredPadding(for: screen)
+        padding = override ?? (action.id == appDefaultTransferActionID ? .zero : PaddingConfiguration.getConfiguredPadding(for: screen))
         paddedBounds = padding.applyToBounds(bounds, screen: screen)
         lastAppliedFrame = nil
         needsRecompute = true
@@ -169,6 +175,17 @@ final class ResizeContext {
             newParentAction: newParentAction
         )
 
+        if action.direction == .undo, newAction.direction != .undo {
+            padding = PaddingConfiguration.getConfiguredPadding(for: screen)
+            paddedBounds = padding.applyToBounds(bounds, screen: screen)
+        }
+        if let transferID = appDefaultTransferActionID, newAction.id != transferID || newAction.direction != .custom {
+            appDefaultTransferActionID = nil
+            padding = PaddingConfiguration.getConfiguredPadding(for: screen)
+            paddedBounds = padding.applyToBounds(bounds, screen: screen)
+        }
+        exactUndoFrame = nil
+        appDefaultHasNoTargetFrame = false
         action = newAction
         parentAction = newParentAction
         needsRecompute = true
@@ -188,13 +205,13 @@ final class ResizeContext {
 
     /// Creates a lightweight child context that shares this context's resolved state but uses a different action and bounds.
     /// Used for recursive frame resolution (e.g. undo) without additional AX calls.
-    func derivedContext(action newAction: WindowAction, bounds newBounds: CGRect) -> ResizeContext {
+    func derivedContext(action newAction: WindowAction, bounds newBounds: CGRect, padding newPadding: PaddingConfiguration = .zero) -> ResizeContext {
         // Pass window: nil to skip eager AX resolution in init; we overwrite with the parent's (the currently stored) snapshot.
         let context = ResizeContext(
             initialFrame: resolvedWindowProperties?.frame,
             screen: screen,
             bounds: newBounds,
-            padding: .zero,
+            padding: newPadding,
             action: newAction,
             initialMousePosition: initialMousePosition
         )
@@ -202,7 +219,62 @@ final class ResizeContext {
         context.resolvedWindowProperties = resolvedWindowProperties
         context.resolvedRecord = resolvedRecord
         context.sidesToAdjust = sidesToAdjust
+        if newAction.id == appDefaultTransferActionID { context.appDefaultTransferActionID = appDefaultTransferActionID }
         return context
+    }
+
+    /// Shared effective context for both preview and execution. In particular,
+    /// fallback padding belongs to the fallback, not to the App Default wrapper.
+    func effectiveAppDefaultContext(savedFrame: CGRect?) -> ResizeContext? {
+        let effectiveAction = savedFrame == nil ? action.appDefaultFallback : action
+        guard !effectiveAction.direction.isNoOp else { return nil }
+        let context = ResizeContext(
+            initialFrame: cachedTargetFrame.raw, screen: screen, bounds: bounds,
+            padding: savedFrame == nil ? padding : .zero, action: effectiveAction
+        )
+        context.window = window
+        context.resolvedWindowProperties = resolvedWindowProperties
+        context.resolvedRecord = resolvedRecord
+        context.lastAppliedFrame = lastAppliedFrame
+        context.sidesToAdjust = sidesToAdjust
+        context.appDefaultFrame = savedFrame
+        return context
+    }
+
+    /// Live resizing must retain the actual frame, including an app's size constraints,
+    /// without overwriting a newer selection or a different target window.
+    func adoptAppDefaultResult(from executed: ResizeContext, expectedAction: WindowAction) {
+        guard action.direction == .useAppDefault, action == expectedAction,
+              window?.cgWindowID == executed.window?.cgWindowID,
+              let frame = executed.lastAppliedFrame else { return }
+        if screen != executed.screen { setScreen(to: executed.screen) }
+        resolvedWindowProperties = executed.resolvedWindowProperties
+        resolvedRecord = executed.resolvedRecord
+        lastAppliedFrame = frame
+    }
+
+    func materializeAppDefaultForScreenChange(cycleChild: WindowAction? = nil) -> WindowAction? {
+        guard action.direction == .useAppDefault else { return nil }
+        let target = getTargetFrame().padded
+        let frame = appDefaultHasNoTargetFrame ? cachedTargetFrame.raw : target
+        // The cycle cursor has already committed its screen child. Retain that
+        // child's ID so the following invocation advances past it, not into it.
+        guard let transfer = AppWindowDefault.transferableAction(cycleChild ?? action, frame: frame, bounds: bounds) else { return nil }
+        appDefaultTransferActionID = transfer.id
+        padding = .zero
+        paddedBounds = bounds
+        return transfer
+    }
+
+    func resolveExactUndoScreen() {
+        guard action.direction == .undo, let frame = resolvedRecord?.lastExactFrame else { return }
+        let screens = NSScreen.screens
+        guard let target = AppWindowDefault.exactUndoTarget(
+            frame: frame, bounds: screens.map(\.cgSafeScreenFrame),
+            fallbackIndex: screens.firstIndex(where: { $0 == screen }) ?? 0
+        ) else { return }
+        setScreen(to: screens[target.index], padding: .zero)
+        exactUndoFrame = target.frame
     }
 
     func getTargetFrame() -> ComputedFrame {
@@ -210,7 +282,7 @@ final class ResizeContext {
             recomputeTargetFrame()
         }
 
-        return cachedTargetFrame
+        return appDefaultHasNoTargetFrame ? .zero : cachedTargetFrame
     }
 
     private func recomputeTargetFrame() {
@@ -220,6 +292,19 @@ final class ResizeContext {
         // re-entrant call returns the cached frame instead of recomputing and recursing
         // until the stack overflows.
         needsRecompute = false
+
+        if action.direction == .useAppDefault, appDefaultFrame == nil {
+            let savedFrame = window.flatMap { AppWindowDefaultManager.target(for: $0)?.frame }
+            if let effective = effectiveAppDefaultContext(savedFrame: savedFrame) {
+                appDefaultHasNoTargetFrame = false
+                cachedTargetFrame = effective.getTargetFrame()
+            } else {
+                // Hide the preview without destroying the base used by a later
+                // grow/shrink/move selection in the same Loop interaction.
+                appDefaultHasNoTargetFrame = true
+            }
+            return
+        }
 
         // Actions with no target frame return a zero-size sentinel from `getFrame`; caching it
         // would clobber the base frame that a later grow/shrink/move reads. Keep the real cached

@@ -2398,6 +2398,28 @@
         }
       }
     },
+    "App Default" : {
+      "comment" : "Window action: restore this app's preferred frame",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App Default"
+          }
+        }
+      }
+    },
+    "App Defaults" : {
+      "comment" : "Settings section and button for configuring per-app default window frames",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App Defaults"
+          }
+        }
+      }
+    },
     "App icon is locked" : {
       "localizations" : {
         "ar" : {
@@ -2570,6 +2592,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "包含邊距"
+          }
+        }
+      }
+    },
+    "Apply to new windows automatically" : {
+      "comment" : "Toggle to apply saved app default frames to newly created windows",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply to new windows automatically"
           }
         }
       }
@@ -5235,6 +5268,28 @@
         }
       }
     },
+    "Configure App Default fallback" : {
+      "comment" : "Accessible name of the button editing an App Default action's fallback",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configure App Default fallback"
+          }
+        }
+      }
+    },
+    "Configure the fallback when this app has no saved default." : {
+      "comment" : "Help text for the App Default fallback configuration button",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configure the fallback when this app has no saved default."
+          }
+        }
+      }
+    },
     "Configure…" : {
       "comment" : "Button label that opens a view to configure padding settings.",
       "localizations" : {
@@ -5856,6 +5911,17 @@
         }
       }
     },
+    "Current display" : {
+      "comment" : "App default display choice: use the target window's current display",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current display"
+          }
+        }
+      }
+    },
     "Custom" : {
       "comment" : "Accent color option\nPreview background style: a configurable blur and accent color\nWindow action",
       "localizations" : {
@@ -6034,6 +6100,17 @@
         }
       }
     },
+    "Customize app default for %@" : {
+      "comment" : "Accessible name of a button configuring the named app's default frame; %@ is the app name",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Customize app default for %@"
+          }
+        }
+      }
+    },
     "Customize this action’s custom frame." : {
       "comment" : "Help text on the slider icon next to a gesture action with a custom frame",
       "localizations" : {
@@ -6119,6 +6196,17 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "自訂該操作的邊框位置。"
+          }
+        }
+      }
+    },
+    "Customize this app’s default frame." : {
+      "comment" : "Help text for the button configuring an app's default frame",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Customize this app’s default frame."
           }
         }
       }
@@ -7185,6 +7273,28 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Direction"
+          }
+        }
+      }
+    },
+    "Disconnected display" : {
+      "comment" : "App default display choice for a saved monitor that is not currently connected",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disconnected display"
+          }
+        }
+      }
+    },
+    "Display" : {
+      "comment" : "Picker label for the preferred display of an app's default window frame",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Display"
           }
         }
       }
@@ -8336,6 +8446,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "全局菜單欄"
+          }
+        }
+      }
+    },
+    "Fallback frame" : {
+      "comment" : "Button label for configuring a custom App Default fallback frame",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fallback frame"
           }
         }
       }
@@ -20749,6 +20870,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無操作"
+          }
+        }
+      }
+    },
+    "No app defaults" : {
+      "comment" : "Empty state for the list of saved app default window frames",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No app defaults"
           }
         }
       }
@@ -37121,6 +37253,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "牆紙"
+          }
+        }
+      }
+    },
+    "When no default is saved" : {
+      "comment" : "Picker label for the action to use when an app has no saved default frame",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When no default is saved"
           }
         }
       }

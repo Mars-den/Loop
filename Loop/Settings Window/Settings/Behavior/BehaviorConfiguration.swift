@@ -29,6 +29,7 @@ struct BehaviorConfigurationView: View {
     @Default(.shiftFocusWhenStashed) var shiftFocusWhenStashed
 
     @State private var isPaddingConfigurationViewPresented = false
+    @State private var isAppDefaultsConfigurationPresented = false
 
     var body: some View {
         LuminareForm {
@@ -65,6 +66,28 @@ struct BehaviorConfigurationView: View {
 
     private var windowSection: some View {
         LuminareSection(String(localized: "Window", comment: "Section header shown in settings")) {
+            LuminareButton("App Defaults", "Configure…") {
+                isAppDefaultsConfigurationPresented = true
+            }
+            .luminareModal(isPresented: $isAppDefaultsConfigurationPresented) {
+                LuminareForm {
+                    AppWindowDefaultsConfigurationView()
+                    Button {
+                        isAppDefaultsConfigurationPresented = false
+                    } label: {
+                        Text("Done", comment: "Label for a button that closes a modal window")
+                    }
+                    .buttonStyle(.luminare(overrideUseMainStyle: true))
+                    .luminareCornerRadius(8)
+                }
+                // Keep large app lists scrollable without growing the settings pane.
+                .frame(width: 440)
+                .frame(maxHeight: 560)
+            }
+            .luminareModalCornerRadius(24)
+            // Opening an app's editor or chooser must not dismiss its manager.
+            .luminareModalClosesOnDefocus(false)
+
             LuminarePickerMenu(
                 "Target window",
                 selection: windowSelection,

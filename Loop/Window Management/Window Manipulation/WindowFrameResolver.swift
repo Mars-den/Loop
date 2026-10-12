@@ -77,6 +77,14 @@ enum WindowFrameResolver {
         resizeContext.getTargetFrame().padded
     }
 
+    static func currentRecordedFrame(context: ResizeContext, bounds: CGRect, padding: PaddingConfiguration) -> CGRect? {
+        guard let record = context.resolvedRecord else { return nil }
+        if let exact = record.currentExactFrame { return exact }
+        guard let action = record.currentAction else { return nil }
+        if action.direction == .initialFrame { return record.initialFrame }
+        return context.derivedContext(action: action, bounds: bounds, padding: padding).getTargetFrame().padded
+    }
+
     static func getRevealedFrame(for action: WindowAction, window: Window, screen: NSScreen) async -> CGRect {
         let context = ResizeContext(window: window, screen: screen, action: action)
         await context.refreshResolvedState()
@@ -139,6 +147,11 @@ extension WindowFrameResolver {
         let bounds = context.paddedBounds
         let action = context.action
         let properties = context.resolvedWindowProperties
+
+        if action.direction == .useAppDefault {
+            if let frame = context.appDefaultFrame ?? context.window.flatMap({ AppWindowDefaultManager.target(for: $0)?.frame }) { return frame }
+            return context.effectiveAppDefaultContext(savedFrame: nil)?.getTargetFrame().raw ?? .zero
+        }
 
         let direction = action.direction
         var result: CGRect = .zero
@@ -218,8 +231,12 @@ extension WindowFrameResolver {
         } else if direction == .macOSCenter {
             result = calculateMacOSCenterFrame(bounds: bounds, windowProperties: properties)
 
-        } else if direction == .undo, let properties {
-            result = getLastActionFrame(context: context, bounds: bounds, windowProperties: properties)
+        } else if direction == .undo {
+            if let exact = context.exactUndoFrame ?? context.resolvedRecord?.lastExactFrame {
+                result = exact
+            } else if let properties {
+                result = getLastActionFrame(context: context, bounds: bounds, windowProperties: properties)
+            }
 
         } else if direction == .initialFrame, let properties {
             result = getInitialFrame(record: context.resolvedRecord, windowProperties: properties)

@@ -17,10 +17,54 @@ actor WindowRecords {
     struct Record {
         let initialFrame: CGRect
         var actions: [WindowAction]
+        var exactFrames: [UUID: CGRect] = [:]
 
         init(initialFrame: CGRect) {
             self.initialFrame = initialFrame
             self.actions = [.init(.initialFrame)]
+        }
+
+        /// Keep a concrete action as well as the absolute frame. Screen-switching
+        /// can still reuse the action, while Undo restores exact global geometry.
+        mutating func appendExactFrame(_ frame: CGRect, action: WindowAction) {
+            exactFrames[action.id] = frame
+            actions.insert(action, at: 0)
+        }
+
+        var lastExactFrame: CGRect? {
+            guard actions.count >= 2 else { return nil }
+            return exactFrames[actions[1].id]
+        }
+
+        /// A completed default is one transition. Preserve manual changes only
+        /// when they are not already represented by the current history entry.
+        mutating func commitAppDefaultTransition(
+            before: CGRect, after: CGRect, representedFrame: CGRect?,
+            beforeAction: WindowAction, afterAction: WindowAction
+        ) {
+            guard !Task.isCancelled, before.isFinite, after.isFinite,
+                  before.width > 0, before.height > 0, after.width > 0, after.height > 0,
+                  !before.approximatelyEqual(to: after, tolerance: 1) else { return }
+            let currentFrame = actions.first.flatMap { exactFrames[$0.id] } ?? representedFrame
+            if currentFrame?.approximatelyEqual(to: before, tolerance: 1) == true, let current = actions.first {
+                if actions.dropFirst().contains(where: { $0.id == current.id }) {
+                    // Bindings can recur with the same ID. Giving this snapshot
+                    // its own identity must not overwrite an older occurrence.
+                    actions[0] = beforeAction
+                    exactFrames[beforeAction.id] = before
+                } else {
+                    exactFrames[current.id] = before
+                }
+            } else {
+                appendExactFrame(before, action: beforeAction)
+            }
+            appendExactFrame(after, action: afterAction)
+        }
+
+        mutating func removeCurrentAction() {
+            guard actions.count > 1 else { return }
+            let removed = actions.removeFirst()
+            exactFrames[removed.id] = nil
         }
     }
 
@@ -29,12 +73,33 @@ actor WindowRecords {
         let initialFrame: CGRect?
         let lastAction: WindowAction?
         let currentAction: WindowAction?
+        let lastExactFrame: CGRect?
+        let currentExactFrame: CGRect?
 
         init(for window: Window) async {
             self.initialFrame = await WindowRecords.shared.getInitialFrame(for: window)
             self.lastAction = await WindowRecords.shared.getLastAction(for: window)
             self.currentAction = await WindowRecords.shared.getCurrentAction(for: window)
+            self.lastExactFrame = await WindowRecords.shared.getLastExactFrame(for: window)
+            self.currentExactFrame = await WindowRecords.shared.getCurrentExactFrame(for: window)
         }
+
+        init(record: Record?) {
+            self.initialFrame = record?.initialFrame
+            self.lastAction = record.flatMap { $0.actions.count >= 2 ? $0.actions[1] : nil }
+            self.currentAction = record?.actions.first
+            self.lastExactFrame = record?.lastExactFrame
+            self.currentExactFrame = record.flatMap { record in record.actions.first.flatMap { record.exactFrames[$0.id] } }
+        }
+    }
+
+    private func getLastExactFrame(for window: Window) -> CGRect? {
+        recordsByWindowID[window.cgWindowID]?.lastExactFrame
+    }
+
+    private func getCurrentExactFrame(for window: Window) -> CGRect? {
+        guard let record = recordsByWindowID[window.cgWindowID], let current = record.actions.first else { return nil }
+        return record.exactFrames[current.id]
     }
 
     /// Erase all previous records for a window
@@ -65,7 +130,7 @@ actor WindowRecords {
     nonisolated func shouldStoreAsFinalFrame(_ action: WindowAction) -> Bool {
         // Actions that are stored as frames need to be recorded *after* resize.
         // These actions are context-dependent, and cannot simply be called as an action to restore the previous state.
-        let storeAsFrame = action.direction.willChangeScreen || action.willManipulateExistingWindowFrame
+        let storeAsFrame = action.direction.willChangeScreen || action.willManipulateExistingWindowFrame || action.direction == .useAppDefault
         return storeAsFrame
     }
 
@@ -119,6 +184,20 @@ actor WindowRecords {
         log.info("Recorded: \(action) for: \(window)")
     }
 
+    func recordAppDefaultTransition(
+        for window: Window, before: CGRect, after: CGRect, representedFrame: CGRect?,
+        beforeBounds: CGRect, afterBounds: CGRect
+    ) {
+        guard !Task.isCancelled,
+              let beforeAction = AppWindowDefault.transferableAction(.init(.custom), frame: before, bounds: beforeBounds),
+              let afterAction = AppWindowDefault.transferableAction(.init(.custom), frame: after, bounds: afterBounds) else { return }
+        recordFirstIfNeeded(for: window, resolvedProperties: nil)
+        recordsByWindowID[window.cgWindowID]?.commitAppDefaultTransition(
+            before: before, after: after, representedFrame: representedFrame,
+            beforeAction: beforeAction, afterAction: afterAction
+        )
+    }
+
     /// Removes the last action performed on the specified window. This will NOT remove the first action for the specified window.
     func removeLastAction(for window: Window) {
         guard let record = recordsByWindowID[window.cgWindowID],
@@ -128,7 +207,7 @@ actor WindowRecords {
             return
         }
 
-        recordsByWindowID[window.cgWindowID]?.actions.removeFirst()
+        recordsByWindowID[window.cgWindowID]?.removeCurrentAction()
 
         log.info("Removed last record for: \(window)")
     }

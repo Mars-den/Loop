@@ -19,7 +19,7 @@ extension WindowDirection {
 
     var name: String {
         switch self {
-        case .noAction, .noSelection:
+        case .noAction, .noSelection, .saveAppDefault:
             String(localized: "No Action", comment: "Window action: no selection")
         case .maximize:
             String(localized: "Maximize", comment: "Window action")
@@ -37,6 +37,8 @@ extension WindowDirection {
             String(localized: "Undo", comment: "Window action")
         case .initialFrame:
             String(localized: "Initial Frame", comment: "Window action")
+        case .useAppDefault:
+            String(localized: "App Default", comment: "Window action: restore this app's preferred frame")
         case .hide:
             String(localized: "Hide", comment: "Window action")
         case .minimize:

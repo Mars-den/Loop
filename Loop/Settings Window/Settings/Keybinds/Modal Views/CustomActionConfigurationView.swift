@@ -18,6 +18,9 @@ struct CustomActionConfigurationView: View {
     @State private var action: WindowAction
     @State private var currentTab: Tab = .position
     @State private var isDeferringExternalCommit = false
+    @State private var screens = NSScreen.screens
+    private let preferredDisplay: Binding<String?>?
+    private let allowsDynamicSize: Bool
 
     private enum Tab: LocalizedStringKey, CaseIterable {
         case position = "Position", size = "Size"
@@ -45,12 +48,22 @@ struct CustomActionConfigurationView: View {
     }
 
     private let previewController = PreviewController()
-    private let screenSize: CGSize = NSScreen.main?.frame.size ?? NSScreen.screens[0].frame.size
+    private var selectedScreen: NSScreen? {
+        screens.first { $0.appDefaultDisplayUUID == preferredDisplay?.wrappedValue && preferredDisplay?.wrappedValue != nil }
+            ?? NSScreen.main ?? screens.first
+    }
 
-    init(action: Binding<WindowAction>, isPresented: Binding<Bool>) {
+    private var screenSize: CGSize { selectedScreen?.frame.size ?? .zero }
+
+    init(
+        action: Binding<WindowAction>, isPresented: Binding<Bool>,
+        preferredDisplay: Binding<String?>? = nil, allowsDynamicSize: Bool = true
+    ) {
         _windowAction = action
         _isPresented = isPresented
         _action = State(initialValue: action.wrappedValue)
+        self.preferredDisplay = preferredDisplay
+        self.allowsDynamicSize = allowsDynamicSize
     }
 
     var body: some View {
@@ -66,20 +79,31 @@ struct CustomActionConfigurationView: View {
             guard !isDeferringExternalCommit else { return }
             windowAction = newValue
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+            screens = NSScreen.screens
+        }
     }
 
     @ViewBuilder
     private func configurationSections() -> some View {
-        LuminareSection(outerPadding: 0) {
-            LuminareTextField(
-                WindowDirection.custom.name,
-                text: Binding(
-                    get: { action.name ?? "" },
-                    set: { action.name = $0 }
+        if let preferredDisplay {
+            LuminareSection {
+                LuminarePickerMenu("Display", selection: displaySelection(preferredDisplay), items: displayChoices(preferredDisplay)) { uuid in
+                    Text(displayName(uuid))
+                }
+            }
+        } else {
+            LuminareSection(outerPadding: 0) {
+                LuminareTextField(
+                    WindowDirection.custom.name,
+                    text: Binding(
+                        get: { action.name ?? "" },
+                        set: { action.name = $0 }
+                    )
                 )
-            )
-            .luminareFilledStates(.none)
-            .luminareBorderedStates(.none)
+                .luminareFilledStates(.none)
+                .luminareBorderedStates(.none)
+            }
         }
 
         LuminareSection(outerPadding: 0) {
@@ -100,7 +124,7 @@ struct CustomActionConfigurationView: View {
                 action.unit = .percentage
             }
 
-            if action.sizeMode == nil {
+            if action.sizeMode == nil || !allowsDynamicSize {
                 action.sizeMode = .custom
             }
 
@@ -159,8 +183,8 @@ struct CustomActionConfigurationView: View {
                     maximumDistance: .infinity,
                     pressing: { pressing in
                         if pressing {
-                            guard let screen = NSScreen.main else { return }
-                            let context = ResizeContext(screen: screen)
+                            guard let screen = selectedScreen else { return }
+                            let context = ResizeContext(screen: screen, padding: preferredDisplay == nil ? nil : .zero)
                             context.setAction(to: action, parent: nil)
                             previewController.open(context: context)
                         } else {
@@ -287,32 +311,34 @@ struct CustomActionConfigurationView: View {
 
     @ViewBuilder
     private func sizeConfiguration() -> some View {
-        LuminarePicker(
-            elements: CustomWindowActionSizeMode.allCases,
-            selection: Binding(
-                get: {
-                    action.sizeMode ?? .custom
-                },
-                set: { newValue in
-                    withAnimation(luminareAnimation) {
-                        action.sizeMode = newValue
+        if allowsDynamicSize {
+            LuminarePicker(
+                elements: CustomWindowActionSizeMode.allCases,
+                selection: Binding(
+                    get: {
+                        action.sizeMode ?? .custom
+                    },
+                    set: { newValue in
+                        withAnimation(luminareAnimation) {
+                            action.sizeMode = newValue
+                        }
                     }
+                ),
+                columns: 3
+            ) { mode in
+                VStack(spacing: 4) {
+                    mode.image
+                    Text(mode.name)
                 }
-            ),
-            columns: 3
-        ) { mode in
-            VStack(spacing: 4) {
-                mode.image
-                Text(mode.name)
+                .padding(.vertical, 15)
+                .compositingGroup()
             }
-            .padding(.vertical, 15)
-            .compositingGroup()
+            .luminareContentSize(hasFixedHeight: true)
+            .luminareRoundingBehavior(
+                top: true,
+                bottom: action.sizeMode != .custom
+            )
         }
-        .luminareContentSize(hasFixedHeight: true)
-        .luminareRoundingBehavior(
-            top: true,
-            bottom: action.sizeMode != .custom
-        )
 
         if action.sizeMode ?? .custom == .custom {
             LuminareSlider(
@@ -355,6 +381,23 @@ struct CustomActionConfigurationView: View {
 
     private func handleSliderEditingChanged(_ isEditing: Bool) {
         isDeferringExternalCommit = isEditing
+    }
+
+    /// Keep disconnected display identities selectable, rather than silently
+    /// overwriting them when opening the editor or reconnecting a monitor.
+    private func displayChoices(_ binding: Binding<String?>) -> [String] {
+        var choices = [""] + screens.compactMap(\.appDefaultDisplayUUID)
+        if let saved = binding.wrappedValue, !choices.contains(saved) { choices.append(saved) }
+        return choices
+    }
+
+    private func displayName(_ uuid: String) -> String {
+        if uuid.isEmpty { return String(localized: "Current display") }
+        return screens.first { $0.appDefaultDisplayUUID == uuid }?.localizedName ?? String(localized: "Disconnected display")
+    }
+
+    private func displaySelection(_ binding: Binding<String?>) -> Binding<String> {
+        Binding(get: { binding.wrappedValue ?? "" }, set: { binding.wrappedValue = $0.isEmpty ? nil : $0 })
     }
 
     private func commitSliderChanges() {

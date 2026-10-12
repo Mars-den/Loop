@@ -22,6 +22,7 @@ struct GestureItemView: View {
     @State private var isGestureConfigPresented = false
     @State private var isConfiguringCustom = false
     @State private var isConfiguringCycle = false
+    @State private var isConfiguringAppDefault = false
 
     init(_ gesture: Binding<GestureBinding>, hasConflict: Bool) {
         self.gesture = gesture.wrappedValue
@@ -106,6 +107,9 @@ struct GestureItemView: View {
             }
             if resolvedAction?.direction == .cycle {
                 isConfiguringCycle = true
+            }
+            if resolvedAction?.direction == .useAppDefault {
+                isConfiguringAppDefault = true
             }
         }
         .onChange(of: gesture) { externalGesture = $0 }
@@ -228,6 +232,21 @@ struct GestureItemView: View {
 
             Group {
                 if let resolvedAction {
+                    if resolvedAction.direction == .useAppDefault {
+                        Button {
+                            isConfiguringAppDefault = true
+                        } label: {
+                            Image(systemName: "slider.horizontal.3")
+                        }
+                        .buttonStyle(.plain)
+                        .luminareModal(isPresented: $isConfiguringAppDefault) {
+                            AppDefaultActionConfigurationView(action: actionBinding, isPresented: $isConfiguringAppDefault)
+                                .frame(width: 400)
+                        }
+                        .luminareModalCornerRadius(24)
+                        .help("Configure the fallback when this app has no saved default.")
+                        .accessibilityLabel(Text("Configure App Default fallback", comment: "Accessible name of the button editing an App Default action's fallback"))
+                    }
                     if resolvedAction.direction.isCustomizable {
                         Button {
                             isConfiguringCustom = true

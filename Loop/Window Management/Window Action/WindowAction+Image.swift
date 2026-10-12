@@ -76,12 +76,14 @@ extension WindowAction {
         }
 
         return switch direction {
-        case .noAction:
+        case .noAction, .saveAppDefault:
             .systemImage("questionmark")
         case .undo:
             .systemImage("arrow.uturn.backward")
         case .initialFrame:
             .systemImage("backward.end.fill")
+        case .useAppDefault:
+            .systemImage("app.badge.checkmark")
         case .hide:
             .systemImage("eye.slash")
         case .fullscreen:

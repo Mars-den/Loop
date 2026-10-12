@@ -283,7 +283,11 @@ extension LoopManager {
             return .alreadyOpen
         }
 
-        let window = window ?? WindowUtility.userDefinedTargetWindow()
+        let window: Window? = if startingAction.direction == .useAppDefault {
+            NSWorkspace.shared.frontmostApplication.flatMap { try? Window(pid: $0.processIdentifier) }
+        } else {
+            window ?? WindowUtility.userDefinedTargetWindow()
+        }
 
         guard window?.isAppExcluded != true else {
             throw LoopManagerError.appExcluded
@@ -506,6 +510,10 @@ extension LoopManager {
 
         if newAction.direction.willChangeScreen {
             var newScreen: NSScreen = currentScreen
+            let appDefaultTransfer = resizeContext.materializeAppDefaultForScreenChange(cycleChild: newParentAction == nil ? nil : newAction)
+            if let appDefaultTransfer {
+                setResizeAction(to: appDefaultTransfer, parent: newParentAction)
+            }
 
             if newAction.direction == .nextScreen,
                let nextScreen = ScreenUtility.nextScreen(from: currentScreen) {
@@ -585,7 +593,9 @@ extension LoopManager {
             resizeContext.setScreen(to: newScreen)
             indicatorService.openAndUpdate(context: resizeContext, hideOnNoSelection: hideIndicatorOnNoSelection)
 
-            if let parent = newParentAction {
+            // A cycle's screen child transfers the selected default once. Do not
+            // immediately advance back into App Default and re-pin its display.
+            if let parent = newParentAction, appDefaultTransfer == nil {
                 setResizeAction(to: newAction, parent: newParentAction)
                 await changeAction(parent, triggeredFromScreenChange: true)
             } else {
@@ -606,6 +616,18 @@ extension LoopManager {
         }
 
         if newAction != resizeContext.action || newAction.allowsRepeatedSelection {
+            if newAction.direction == .useAppDefault {
+                let focused = NSWorkspace.shared.frontmostApplication.flatMap { try? Window(pid: $0.processIdentifier) }
+                guard let focused, !focused.isAppExcluded else { return }
+                let preparedTarget = await ResizeContext.prepareWindowTarget(focused)
+                guard resizeContext === originatingContext, actionRevision == originatingRevision else { return }
+                resizeContext.commitWindowTarget(preparedTarget)
+                if let target = AppWindowDefaultManager.target(for: focused) {
+                    resizeContext.setScreen(to: target.screen)
+                } else {
+                    resizeContext.setScreen(to: ScreenUtility.screenContaining(focused))
+                }
+            }
             if !disableHapticFeedback {
                 performHapticFeedback()
             }
@@ -615,6 +637,7 @@ extension LoopManager {
             if !Defaults[.previewVisibility], !previousActionWasNoOp {
                 await resizeContext.refreshResolvedState()
             }
+            resizeContext.resolveExactUndoScreen()
             indicatorService.openAndUpdate(context: resizeContext, hideOnNoSelection: hideIndicatorOnNoSelection)
 
             Task { [weak self, originatingContext] in

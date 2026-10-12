@@ -20,6 +20,7 @@ struct RadialMenuActionItemView: View {
     @State private var isActionPickerPresented = false
     @State private var isConfiguringCustom = false
     @State private var isConfiguringCycle = false
+    @State private var isConfiguringAppDefault = false
 
     init(
         _ action: Binding<RadialMenuAction>,
@@ -92,6 +93,9 @@ struct RadialMenuActionItemView: View {
             if action.resolved?.direction == .cycle {
                 isConfiguringCycle = true
             }
+            if action.resolved?.direction == .useAppDefault {
+                isConfiguringAppDefault = true
+            }
         }
         .onChange(of: action) { externalAction = $0 }
     }
@@ -160,6 +164,21 @@ struct RadialMenuActionItemView: View {
 
             Group {
                 if let resolvedAction = action.resolved {
+                    if resolvedAction.direction == .useAppDefault {
+                        Button {
+                            isConfiguringAppDefault = true
+                        } label: {
+                            Image(systemName: "slider.horizontal.3")
+                        }
+                        .buttonStyle(.plain)
+                        .luminareModal(isPresented: $isConfiguringAppDefault) {
+                            AppDefaultActionConfigurationView(action: actionBinding, isPresented: $isConfiguringAppDefault)
+                                .frame(width: 400)
+                        }
+                        .luminareModalCornerRadius(24)
+                        .help("Configure the fallback when this app has no saved default.")
+                        .accessibilityLabel(Text("Configure App Default fallback", comment: "Accessible name of the button editing an App Default action's fallback"))
+                    }
                     if resolvedAction.direction.isCustomizable {
                         Button {
                             isConfiguringCustom = true

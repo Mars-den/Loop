@@ -109,6 +109,46 @@ struct WindowAction: Codable, Identifiable, Hashable, Equatable, Defaults.Serial
     var xPoint: Double?
     var yPoint: Double?
 
+    /// Each App Default binding owns its fallback. Its custom-frame values
+    /// reuse the fields above rather than introducing a recursive action type.
+    var fallbackDirection: WindowDirection?
+
+    var appDefaultFallback: WindowAction {
+        get {
+            var fallback = self
+            fallback.direction = fallbackDirection ?? .noAction
+            fallback.fallbackDirection = nil
+            fallback.keybind = []
+            fallback.bypassTriggerKey = nil
+            return AppWindowDefault.validatedFallback(fallback)
+        }
+        set {
+            let fallback = AppWindowDefault.validatedFallback(newValue)
+            fallbackDirection = fallback.direction
+            name = fallback.name
+            unit = fallback.unit
+            anchor = fallback.anchor
+            sizeMode = fallback.sizeMode
+            width = fallback.width
+            height = fallback.height
+            positionMode = fallback.positionMode
+            xPoint = fallback.xPoint
+            yPoint = fallback.yPoint
+        }
+    }
+
+    /// Preserve IDs and shortcuts from the first development build, but disable
+    /// its removed Save action and move its global fallback onto existing bindings.
+    func migratingAppDefaults(legacyFallback: WindowAction) -> WindowAction {
+        var result = self
+        if direction == .saveAppDefault { result.direction = .noAction }
+        if direction == .useAppDefault, fallbackDirection == nil {
+            result.appDefaultFallback = legacyFallback
+        }
+        result.cycle = cycle?.map { $0.migratingAppDefaults(legacyFallback: legacyFallback) }
+        return result
+    }
+
     /// Custom Cycle Properties
     var cycle: [WindowAction]?
 
@@ -135,6 +175,7 @@ struct WindowAction: Codable, Identifiable, Hashable, Equatable, Defaults.Serial
         let positionMode: CustomWindowActionPositionMode?
         let xPoint: Double?
         let yPoint: Double?
+        let fallbackDirection: WindowDirection?
         let cycle: [Self]?
     }
 
@@ -152,6 +193,7 @@ struct WindowAction: Codable, Identifiable, Hashable, Equatable, Defaults.Serial
             positionMode: positionMode,
             xPoint: xPoint,
             yPoint: yPoint,
+            fallbackDirection: fallbackDirection,
             cycle: cycle?.map(\.semanticKey)
         )
     }
@@ -196,7 +238,7 @@ struct WindowAction: Codable, Identifiable, Hashable, Equatable, Defaults.Serial
     /// Undo and stash are not rapid-repeat actions, but selecting them again should still
     /// apply: undo walks back another recorded action, and stash toggles an existing stashed window.
     var allowsRepeatedSelection: Bool {
-        allowsRapidRepeat || direction == .undo || direction == .stash
+        allowsRapidRepeat || direction == .undo || direction == .stash || direction == .useAppDefault
     }
 
     var forceProportionalFrameOnScreenChange: Bool {
@@ -205,7 +247,7 @@ struct WindowAction: Codable, Identifiable, Hashable, Equatable, Defaults.Serial
 
     /// Determines if padding can be applied to the action.
     var isInnerPaddingApplicable: Bool {
-        if direction == .undo || direction == .initialFrame {
+        if direction == .undo || direction == .initialFrame || direction == .useAppDefault {
             return false
         }
 

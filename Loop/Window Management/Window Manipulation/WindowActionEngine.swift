@@ -69,6 +69,32 @@ final class WindowActionEngine {
     /// - Throws: `CancellationError` if a new action is applied to the same window
     @concurrent
     func apply(context: ResizeContext) async throws -> Result {
+        if context.action.direction == .useAppDefault {
+            try Task.checkCancellation()
+            let originatingAction = context.action
+            // App defaults always refer to the focused app, regardless of Loop's
+            // normal under-cursor target-window preference.
+            guard AXIsProcessTrusted(),
+                  let app = NSWorkspace.shared.frontmostApplication,
+                  let window = try? Window(pid: app.processIdentifier),
+                  !window.isAppExcluded else { return .failed }
+            let target = AppWindowDefaultManager.target(for: window)
+            guard let screen = target?.screen ?? ScreenUtility.screenContaining(window) ?? NSScreen.main else { return .noOp }
+            let focusedContext = ResizeContext(window: window, screen: screen, action: context.action)
+            await focusedContext.refreshResolvedState()
+            try Task.checkCancellation()
+            guard let effectiveContext = focusedContext.effectiveAppDefaultContext(savedFrame: target?.frame) else { return .noOp }
+            guard AppWindowDefault.reachableFrame(effectiveContext.getTargetFrame().padded, in: screen.cgSafeScreenFrame) != nil else { return .failed }
+            let result = try await applyResolved(context: effectiveContext)
+            if result.success { context.adoptAppDefaultResult(from: effectiveContext, expectedAction: originatingAction) }
+            return result
+        }
+        return try await applyResolved(context: context)
+    }
+
+    /// App-default resolution happens before task routing, so cancellation is keyed
+    /// to the focused window rather than a possibly unrelated under-cursor window.
+    private func applyResolved(context: ResizeContext) async throws -> Result {
         guard let windowID = context.window?.cgWindowID else {
             return try await performApply(context: context)
         }
@@ -88,11 +114,9 @@ final class WindowActionEngine {
 
         // Await the task and clean up
         let result = try await task.value
-
         await MainActor.run {
             _ = actionTasks.removeValue(forKey: windowID)
         }
-
         return result
     }
 

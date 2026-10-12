@@ -59,6 +59,12 @@ extension Defaults.Keys {
     static let shiftFocusWhenStashed = Key<Bool>("shiftFocusWhenStashed", default: true)
     static let cycleModeRestartEnabled = Key<Bool>("cycleModeRestartEnabled", default: false)
 
+    // App frames are local: display identities and point coordinates belong to this Mac.
+    static let appWindowDefaults = Key<[String: AppWindowDefault]>("appWindowDefaults", default: [:], iCloud: false)
+    static let applyAppDefaultsAutomatically = Key<Bool>("applyAppDefaultsAutomatically", default: false)
+    /// Read only to migrate preferences from the first local development build.
+    static let legacyAppDefaultFallback = Key<WindowAction>("appDefaultFallback", default: .init(.noAction), iCloud: false)
+
     // Keybinds
     static let triggerKey = Key<Set<CGKeyCode>>("trigger", default: [.kVK_Function])
     static let sideDependentTriggerKey = Key<Bool>("sideDependentTriggerKey", default: true)
