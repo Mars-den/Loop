@@ -41,6 +41,9 @@ struct SavedWindowActionFormat: Codable {
     let positionMode: CustomWindowActionPositionMode?
     let xPoint: Double?
     let yPoint: Double?
+    /// Optional so exports created before per-binding App Default fallbacks
+    /// continue to decode. Custom fallback parameters use the fields above.
+    let fallbackDirection: WindowDirection?
     let cycle: [SavedWindowActionFormat]?
 
     /// Initialize from a WindowAction.
@@ -56,12 +59,13 @@ struct SavedWindowActionFormat: Codable {
         self.positionMode = action.positionMode
         self.xPoint = action.xPoint
         self.yPoint = action.yPoint
+        self.fallbackDirection = action.fallbackDirection
         self.cycle = action.cycle?.map { SavedWindowActionFormat($0) }
     }
 
     /// Converts the saved format back into a usable WindowAction object.
     func convertToWindowAction() -> WindowAction {
-        WindowAction(
+        var action = WindowAction(
             direction,
             keybind: keybind,
             name: name,
@@ -76,6 +80,8 @@ struct SavedWindowActionFormat: Codable {
             cycle: cycle?.map { $0.convertToWindowAction()
             }
         )
+        action.fallbackDirection = fallbackDirection
+        return action
     }
 }
 

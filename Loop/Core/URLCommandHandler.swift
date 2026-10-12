@@ -118,6 +118,20 @@ final class URLCommandHandler {
 
     // MARK: - Properties
 
+    /// App defaults are resolved by the engine, never by URL window-selection preferences.
+    static func usesFocusedApplication(for action: WindowAction) -> Bool {
+        action.direction == .useAppDefault
+    }
+
+    /// SaveAppDefault remains decodable for old settings, but is not a command.
+    static var availableDirections: [WindowDirection] {
+        WindowDirection.allCases.filter { $0 != .saveAppDefault }
+    }
+
+    static func commandDirection(named name: String) -> WindowDirection? {
+        availableDirections.first { $0.rawValue.lowercased() == name.lowercased() }
+    }
+
     /// Tracks the last active window for context preservation
     private var lastActiveWindow: Window?
 
@@ -276,7 +290,7 @@ final class URLCommandHandler {
             writeToOutput("No direction specified")
             writeToOutput("Available directions:")
             writeToOutput("  Basic: left, right, top, bottom")
-            writeToOutput("  Full names: \(WindowDirection.allCases.map { $0.rawValue.lowercased() }.joined(separator: ", "))")
+            writeToOutput("  Full names: \(Self.availableDirections.map { $0.rawValue.lowercased() }.joined(separator: ", "))")
             return
         }
 
@@ -294,7 +308,7 @@ final class URLCommandHandler {
             return
         }
 
-        let direction: WindowDirection? = WindowDirection.allCases.first { $0.rawValue.lowercased() == directionStr } ?? {
+        let direction: WindowDirection? = Self.commandDirection(named: directionStr) ?? {
             switch directionStr {
             case "left": return WindowDirection.leftHalf
             case "right": return WindowDirection.rightHalf
@@ -302,7 +316,7 @@ final class URLCommandHandler {
             case "bottom": return WindowDirection.bottomHalf
             default:
                 let withoutHalf = directionStr.replacingOccurrences(of: "half", with: "")
-                return WindowDirection.allCases.first { $0.rawValue.lowercased() == withoutHalf }
+                return Self.commandDirection(named: withoutHalf)
             }
         }()
 
@@ -312,7 +326,7 @@ final class URLCommandHandler {
             writeToOutput("Invalid direction: \(directionStr)")
             writeToOutput("Available directions:")
             writeToOutput("  Basic: left, right, top, bottom")
-            writeToOutput("  Full names: \(WindowDirection.allCases.map { $0.rawValue.lowercased() }.joined(separator: ", "))")
+            writeToOutput("  Full names: \(Self.availableDirections.map { $0.rawValue.lowercased() }.joined(separator: ", "))")
         }
     }
 
@@ -320,6 +334,10 @@ final class URLCommandHandler {
     /// - Parameter direction: The direction to move/resize the window
     private func executeWindowAction(_ direction: WindowDirection) {
         writeToOutput("[URLHandler] Executing direction: \(direction.rawValue)")
+
+        if executeFocusedAppDefault(.init(direction)) {
+            return
+        }
 
         let allWindows = WindowUtility.windowList()
         writeToOutput("[URLHandler] Found \(allWindows.count) total windows")
@@ -399,11 +417,19 @@ final class URLCommandHandler {
         } else if actionStr == "list" {
             // For list command, just show the actions without the invalid message
             printAvailableActions()
-        } else if let direction = WindowDirection.allCases.first(where: { $0.rawValue.lowercased() == actionStr }),
-                  let window = findTargetWindow(from: WindowUtility.windowList()),
-                  let screen = NSScreen.main {
+        } else if let direction = Self.commandDirection(named: actionStr) {
             writeToOutput("Executing action: \(direction.rawValue)")
-            activateAndResizeWindow(window, .init(direction), screen)
+            let action = WindowAction(direction)
+            if executeFocusedAppDefault(action) {
+                return
+            }
+            if let window = findTargetWindow(from: WindowUtility.windowList()),
+               let screen = NSScreen.main {
+                activateAndResizeWindow(window, action, screen)
+            } else {
+                writeToOutput("Invalid action: \(actionStr)")
+                printAvailableActions()
+            }
         } else {
             writeToOutput("Invalid action: \(actionStr)")
             printAvailableActions()
@@ -474,7 +500,7 @@ final class URLCommandHandler {
             return
         }
 
-        let keybinds = Defaults[.keybinds]
+        let keybinds = Defaults[.keybinds].filter { $0.direction != .saveAppDefault }
 
         if keybindName.lowercased() == "list" {
             writeToOutput("[URLHandler] Available keybinds:")
@@ -484,6 +510,9 @@ final class URLCommandHandler {
 
         if let keybind = keybinds.first(where: { $0.name?.lowercased() == keybindName.lowercased() }) {
             writeToOutput("[URLHandler] Executing keybind: \(keybind.name ?? "unnamed")")
+            if executeFocusedAppDefault(keybind) {
+                return
+            }
             if let window = WindowUtility.userDefinedTargetWindow(),
                let screen = NSScreen.main {
                 Task {
@@ -554,7 +583,7 @@ final class URLCommandHandler {
         case "keybinds":
             items.append("Available Keybinds:")
             items.append(contentsOf: Defaults[.keybinds].compactMap { keybind in
-                guard let name = keybind.name else { return nil }
+                guard keybind.direction != .saveAppDefault, let name = keybind.name else { return nil }
                 return "  • loop://keybind/\(name)"
             })
 
@@ -562,7 +591,7 @@ final class URLCommandHandler {
             items.append("Available Commands:")
 
             items.append("\nDirection Commands:")
-            items.append(contentsOf: WindowDirection.allCases.map { "  • loop://direction/\($0.rawValue.lowercased())" })
+            items.append(contentsOf: Self.availableDirections.map { "  • loop://direction/\($0.rawValue.lowercased())" })
 
             items.append("\nScreen Commands:")
             items.append("  • loop://screen/next")
@@ -591,7 +620,7 @@ final class URLCommandHandler {
 
             items.append("\nKeybind Commands:")
             items.append(contentsOf: Defaults[.keybinds].compactMap { keybind in
-                guard let name = keybind.name else { return nil }
+                guard keybind.direction != .saveAppDefault, let name = keybind.name else { return nil }
                 return "  • loop://keybind/\(name)"
             })
 
@@ -605,6 +634,21 @@ final class URLCommandHandler {
     }
 
     // MARK: - Helper Methods
+
+    /// Returns true when handled, including when no screen is available. No normal
+    /// target lookup or activation may precede focused-app resolution in the engine.
+    private func executeFocusedAppDefault(_ action: WindowAction) -> Bool {
+        guard Self.usesFocusedApplication(for: action) else { return false }
+        guard let screen = NSScreen.main else {
+            writeToOutput("[URLHandler] No screen found")
+            return true
+        }
+
+        Task {
+            _ = try? await WindowActionEngine.shared.apply(action, window: nil, screen: screen)
+        }
+        return true
+    }
 
     /// Finds the most appropriate target window for an action
     /// - Parameter visibleWindows: Array of visible windows to choose from
