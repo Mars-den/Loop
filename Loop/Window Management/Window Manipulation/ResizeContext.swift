@@ -300,7 +300,7 @@ final class ResizeContext {
         needsRecompute = false
 
         if action.direction == .useAppDefault, appDefaultFrame == nil {
-            let savedFrame = window.flatMap { AppWindowDefaultManager.target(for: $0)?.frame }
+            let savedFrame = window.flatMap { AppWindowDefaultManager.target(for: $0, selectedScreen: screen)?.frame }
             if let effective = effectiveAppDefaultContext(savedFrame: savedFrame) {
                 appDefaultHasNoTargetFrame = false
                 cachedTargetFrame = effective.getTargetFrame()

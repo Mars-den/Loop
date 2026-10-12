@@ -216,12 +216,14 @@ final class AppWindowDefaultManager {
 
     /// Resolves display-local custom coordinates against the currently available
     /// displays. Geometry is recomputed on every invocation, not cached globally.
-    nonisolated static func target(for window: Window, resolveProperties: Bool = true, useActionScreen: Bool = true) -> (frame: CGRect, screen: NSScreen)? {
+    nonisolated static func target(for window: Window, resolveProperties: Bool = true, useActionScreen: Bool = true, selectedScreen: NSScreen? = nil) -> (frame: CGRect, screen: NSScreen)? {
         guard let id = window.nsRunningApplication?.bundleIdentifier,
               let saved = Defaults[.appWindowDefaults][id] else { return nil }
         let screens = NSScreen.screens
         let current = ScreenUtility.screenContaining(window)
-        let actionScreen = useActionScreen ? (Defaults[.useScreenWithCursor] ? NSScreen.screenWithMouse : NSScreen.main) : nil
+        // Once an interaction selects its screen, preview and execution must reuse
+        // it rather than sampling a cursor that may have moved before release.
+        let actionScreen = useActionScreen ? (selectedScreen ?? (Defaults[.useScreenWithCursor] ? NSScreen.screenWithMouse : NSScreen.main)) : nil
         guard let index = AppWindowDefault.targetDisplayIndex(
             savedUUID: saved.displayUUID, availableUUIDs: screens.map(\.appDefaultDisplayUUID),
             currentIndex: screens.firstIndex(where: { $0 == current }) ?? 0,

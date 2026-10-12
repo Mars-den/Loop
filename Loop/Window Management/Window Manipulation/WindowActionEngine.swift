@@ -78,7 +78,7 @@ final class WindowActionEngine {
                   let app = NSWorkspace.shared.frontmostApplication,
                   let window = try? Window(pid: app.processIdentifier),
                   !window.isAppExcluded else { return .failed }
-            let target = AppWindowDefaultManager.target(for: window)
+            let target = AppWindowDefaultManager.target(for: window, selectedScreen: context.screen)
             guard let screen = target?.screen ?? ScreenUtility.screenContaining(window) ?? NSScreen.main else { return .noOp }
             let focusedContext = ResizeContext(window: window, screen: screen, action: context.action)
             await focusedContext.refreshResolvedState()

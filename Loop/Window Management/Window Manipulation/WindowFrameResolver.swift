@@ -149,7 +149,7 @@ extension WindowFrameResolver {
         let properties = context.resolvedWindowProperties
 
         if action.direction == .useAppDefault {
-            if let frame = context.appDefaultFrame ?? context.window.flatMap({ AppWindowDefaultManager.target(for: $0)?.frame }) { return frame }
+            if let frame = context.appDefaultFrame ?? context.window.flatMap({ AppWindowDefaultManager.target(for: $0, selectedScreen: context.screen)?.frame }) { return frame }
             return context.effectiveAppDefaultContext(savedFrame: nil)?.getTargetFrame().raw ?? .zero
         }
 
