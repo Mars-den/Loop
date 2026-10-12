@@ -53,6 +53,15 @@ struct AppWindowDefaultTests {
         ) == 1)
     }
 
+    @Test func automaticResizeRetryRequiresAnUnchangedUnfinishedWindow() {
+        let observed = CGRect(x: 100, y: 200, width: 849, height: 527)
+        let targetSize = CGSize(width: 1002, height: 488)
+        #expect(AppWindowDefault.shouldRetryAutomaticResize(observedFrame: observed, currentFrame: observed, targetSize: targetSize))
+        #expect(!AppWindowDefault.shouldRetryAutomaticResize(observedFrame: observed, currentFrame: observed.offsetBy(dx: 30, dy: 0), targetSize: targetSize))
+        #expect(!AppWindowDefault.shouldRetryAutomaticResize(observedFrame: observed, currentFrame: CGRect(origin: observed.origin, size: targetSize), targetSize: targetSize))
+        #expect(!AppWindowDefault.shouldRetryAutomaticResize(observedFrame: observed, currentFrame: .zero, targetSize: targetSize))
+    }
+
     @Test func namedDisplayAndDisconnectedFallbackIgnoreActionScreen() {
         #expect(AppWindowDefault.targetDisplayIndex(
             savedUUID: "saved", availableUUIDs: ["saved", "cursor"], currentIndex: 0, actionScreenIndex: 1

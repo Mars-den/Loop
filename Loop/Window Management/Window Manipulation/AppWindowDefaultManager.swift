@@ -188,6 +188,32 @@ final class AppWindowDefaultManager {
            let corrected = AppWindowDefault.reachableFrame(window.frame, in: target.screen.cgSafeScreenFrame, fitSize: false) {
             window.setPosition(corrected.origin)
         }
+        if !isResizable, let observer = observations[pid]?.observer,
+           let bundleID = window.nsRunningApplication?.bundleIdentifier,
+           let saved = Defaults[.appWindowDefaults][bundleID] {
+            let observedFrame = window.frame
+            // Finder can report AXSize as non-settable during window creation,
+            // then become resizable once its initial layout has completed.
+            Task { @MainActor [weak self] in
+                do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+                guard let self, !tasks.isEmpty,
+                      observations[pid].map({ CFEqual($0.observer, observer) }) == true,
+                      Defaults[.applyAppDefaultsAutomatically], AXIsProcessTrusted(),
+                      Defaults[.appWindowDefaults][bundleID] == saved,
+                      !window.isAppExcluded, !window.fullscreen, !window.minimized,
+                      window.nsRunningApplication?.isTerminated == false,
+                      AppWindowDefault.shouldRetryAutomaticResize(
+                          observedFrame: observedFrame, currentFrame: window.frame, targetSize: target.frame.size
+                      ), window.isResizable else { return }
+                let enhancedUI: Bool = (try? appElement.getValue(.enhancedUserInterface)) ?? false
+                if enhancedUI { try? appElement.setValue(.enhancedUserInterface, value: false) }
+                window.setSize(target.frame.size)
+                if let corrected = AppWindowDefault.reachableFrame(window.frame, in: target.screen.cgSafeScreenFrame, fitSize: false) {
+                    window.setPosition(corrected.origin)
+                }
+                if enhancedUI { try? appElement.setValue(.enhancedUserInterface, value: true) }
+            }
+        }
     }
 
     /// Upgrade local development preferences without losing existing shortcuts

@@ -58,6 +58,13 @@ struct AppWindowDefault: Codable, Defaults.Serializable, Equatable {
         return availableUUIDs.indices.contains(currentIndex) ? currentIndex : 0
     }
 
+    /// Retry only the unfinished resize, never a window edited after creation.
+    static func shouldRetryAutomaticResize(observedFrame: CGRect, currentFrame: CGRect, targetSize: CGSize) -> Bool {
+        currentFrame.isFinite && currentFrame.width > 0 && currentFrame.height > 0 &&
+            currentFrame.approximatelyEqual(to: observedFrame, tolerance: 1) &&
+            (abs(currentFrame.width - targetSize.width) > 1 || abs(currentFrame.height - targetSize.height) > 1)
+    }
+
     /// Only frame-producing actions are fallback choices. In particular, rejecting
     /// App Default itself prevents recursive resolution of malformed settings.
     static var fallbackDirections: [WindowDirection] {
